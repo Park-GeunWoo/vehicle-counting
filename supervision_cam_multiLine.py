@@ -22,6 +22,7 @@ def getNextFilename(base_name="result", extension="mp4"):
         i += 1
 
 
+
 class customLineZone:
     def __init__(
         self, 
@@ -116,12 +117,13 @@ def process_frame(
     index: int,
     model, 
     tracker, 
+    smoother, 
     box_annotator,
     label_annotator,
-    line_zone,
+    line_zones,
     line_annotator,
     conf_thres: float,
-    classes: list
+    #classes: list
     ) -> np.ndarray:
     
     #Load frame
@@ -135,13 +137,14 @@ def process_frame(
         print(f"No objects detected")
         return frame
     
-    detections=detections[np.isin(detections.class_id, classes)]
+    #detections=detections[np.isin(detections.class_id, classes)]
     detections=detections[detections.confidence > conf_thres]
     
     #dict {tracker_id:Bounding box}
     tracked_objects = {tracker_id: bbox for tracker_id, bbox in zip(detections.tracker_id, detections.xyxy)}
     
-    line_zone.trigger(tracked_objects)
+    for line_zone in line_zones:
+        line_zone.trigger(tracked_objects)
         
     #label annotater str
     labels = [
@@ -166,33 +169,35 @@ def process_frame(
         labels=labels
     )
     
-    annotated_frame = line_annotator.annotate(
-        frame=annotated_frame,
-        line_zone=line_zone
-    )
-    
-#Show counts
-    cv2.putText(
-        annotated_frame,
-        f"IN Count: {in_count}",
-        (80, 100), #location
-        cv2.FONT_HERSHEY_SIMPLEX, #font
-        2,
-        (0, 255, 0), #text color
-        2,
-        cv2.LINE_AA
+    # 각 line_zone에 대해 annotate 호출
+    for line_zone in line_zones:
+        annotated_frame = line_annotator.annotate(
+            frame=annotated_frame,
+            line_zone=line_zone
         )
     
-    cv2.putText(
-        annotated_frame,
-        f"OUT Count: {out_count}",
-        (80, 200),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        2,
-        (0, 0, 255),
-        2,
-        cv2.LINE_AA
-        )
+    #Show counts
+        cv2.putText(
+            annotated_frame,
+            f"IN Count: {in_count}",
+            (80, 100), #location
+            cv2.FONT_HERSHEY_SIMPLEX, #font
+            2,
+            (0, 255, 255), #text color
+            2,
+            cv2.LINE_AA
+            )
+        
+        cv2.putText(
+            annotated_frame,
+            f"OUT Count: {out_count}",
+            (80, 200),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            2,
+            (0, 0, 255),
+            2,
+            cv2.LINE_AA
+            )
     
     return annotated_frame
 
@@ -209,36 +214,32 @@ def main():
     label_annotator = sv.LabelAnnotator()
     box_annotator = sv.BoxAnnotator()
 
-    input_filename='C:/Users/USER/Downloads/20240529_서평택IC사거리 교통량조사(76G)/3_Input 남측_G88/16-19/alwa_20240529_185759_F.mp4' #1
-    input_filename="C:/Users/USER/Downloads/20240529_서평택IC사거리 교통량조사(76G)/8_Output 북측_G96/16-19/alwa_20240529_164029_F.mp4" #1
-    input_filename="C:/Users/USER/Downloads/20240529_서평택IC사거리 교통량조사(76G)/7_Output 남측_G95/16-19/alwa_20240529_181815_F.mp4" #2
-    input_filename="C:/Users/USER/Downloads/20240529_서평택IC사거리 교통량조사(76G)/6_Output 서측_G89/16-19/alwa_20240529_162522_F.mp4" #3
-    input_filename="C:/Users/USER/Downloads/20240529_서평택IC사거리 교통량조사(76G)/5_Output 동측_G91/16-19/alwa_20240529_181533_F.mp4" #4
-    input_filename="C:/Users/USER/Downloads/20240529_서평택IC사거리 교통량조사(76G)/2_Input 서측_G93/16-19/alwa_20240529_180041_F.mp4"
-    
-    start_point, end_point=(596, 766),(1573, 522) #1
-    start_point,end_point= (254, 440), (1151, 610) #1
-    start_point,end_point= (626, 442), (1651, 795) #2
-    start_point,end_point= (282, 295), (1395, 317) #3
-    start_point,end_point= (199, 425), (1016, 688) #3
-    start_point,end_point= (828, 634), (1622, 484) #3
-
+    input_filename='C:/Users/USER/Downloads/20240529_서평택IC사거리 교통량조사(76G)/3_Input 남측_G88/16-19/alwa_20240529_185759_F.mp4'
     output_filename='result'
     
-    conf_thres = 0.25  #confidence threshold
-    classes = [2, 3, 5, 7]  #class filtering
-    stride=3
-        
     #capturing from webcam
     cap = cv2.VideoCapture(input_filename)
     
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-
+    #Line position
+    start, end = (559, 764), (1556, 506)
+    
+    conf_thres = 0.45  #confidence threshold
+    classes = [2, 3, 5, 7]  #class filtering
+    stride=3
+    
+    # 여러 개의 라인 존 설정
     crossed_ids = set()  # 모든 라인 존이 공유하는 crossed_ids 집합
-
-    line_zones = customLineZone(start=start_point, end=end_point, crossed_ids=crossed_ids)
+    
+    start_points=[(502, 624),(625, 732),(828, 903)]
+    end_points=[(1263, 435),(1556, 493),(1773, 549)]
+    
+    line_zones = [
+        customLineZone(start=start, end=end, crossed_ids=crossed_ids)
+        for start, end in zip(start_points, end_points)
+    ]
     line_annotator = customLineZoneAnnotator()
     
     if not cap.isOpened():
@@ -252,12 +253,13 @@ def main():
     
         print(f"Webcam resolution: {int(width)}x{int(height)}")
         
+        
         output_filename = getNextFilename(base_name=output_filename, extension='mp4')
-        fourcc = cv2.VideoWriter_fourcc(*'XVID')  #Codec
+        fourcc = cv2.VideoWriter_fourcc(*'X264')  #Codec
         out = cv2.VideoWriter(output_filename, fourcc, 15.0, (width, height))
         
     
-    index = 1
+    index = 0
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -268,13 +270,14 @@ def main():
                 frame, 
                 index,
                 model, 
-                tracker,
+                tracker, 
+                smoother, 
                 box_annotator,
                 label_annotator,
                 line_zones,
                 line_annotator,
                 conf_thres,
-                classes
+                #classes
             )
             
             cv2.imshow('Webcam', annotated_frame)
