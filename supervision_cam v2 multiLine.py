@@ -26,10 +26,10 @@ class TraceAnnotator:
         line_color_predicted=(0, 0, 255),
         thickness=8
         ):
-        self.trace_length = trace_length  # 최대 추적 좌표 길이
+        self.trace_length = trace_length  #경로 길이
         self.trace_data = {}  #trace coordinate
         self.line_color_detected = line_color_detected  #detected line color
-        self.line_color_predicted = line_color_predicted  #예측된 경로 색상
+        self.line_color_predicted = line_color_predicted  #경로 색상
         self.thickness = thickness
 
 
@@ -94,7 +94,6 @@ class LineZone:
     
     def is_crossing(self, prev_pos: Tuple[int, int], curr_pos: Tuple[int, int]) -> bool:
         """선분이 LineZone과 교차하는지 계산하는 함수"""
-        #객체의 이전 위치와 현재 위치를 선분으로 보고
         A, B = self.start, self.end  #LineZone의 선분
         C, D = prev_pos, curr_pos  #객체의 선분
         
@@ -144,25 +143,25 @@ def check_line_crossing_multiple_zones(
     prev_x, prev_y = previous_coordinates[-3][0]
     curr_x, curr_y = previous_coordinates[-1][0]
 
-    # 각 LineZone에 대해 반복
-    for line_zone in line_zones:  # 리스트 내부의 LineZone 객체 순회
-        # 객체가 현재 LineZone을 교차했는지 확인
-        if line_zone.is_crossing((prev_x, prev_y), (curr_x, curr_y)):
-            # 기준선을 중심으로 이전 위치와 현재 위치의 상대적 위치를 확인하여 방향 결정
-            line_direction = (line_zone.end[1] - line_zone.start[1]) * (curr_x - line_zone.start[0]) - (line_zone.end[0] - line_zone.start[0]) * (curr_y - line_zone.start[1])
-            prev_line_direction = (line_zone.end[1] - line_zone.start[1]) * (prev_x - line_zone.start[0]) - (line_zone.end[0] - line_zone.start[0]) * (prev_y - line_zone.start[1])
 
-            # 이전 방향과 현재 방향이 다르다면 교차한 것
-            if prev_line_direction > 0 and line_direction <= 0:
-                # 객체가 위에서 아래로 이동했을 때 -> 'in'
+    for line_zone in line_zones:
+        #객가 교차했는지 확인
+        if line_zone.is_crossing((prev_x, prev_y), (curr_x, curr_y)):
+            #이전위치와 현재위치 비교
+            curr_direction = (line_zone.end[1] - line_zone.start[1]) * (curr_x - line_zone.start[0]) - (line_zone.end[0] - line_zone.start[0]) * (curr_y - line_zone.start[1])
+            prev_direction = (line_zone.end[1] - line_zone.start[1]) * (prev_x - line_zone.start[0]) - (line_zone.end[0] - line_zone.start[0]) * (prev_y - line_zone.start[1])
+
+            #이전 방향과 현재 방향이 다르면 교차
+            if prev_direction > 0 and curr_direction <= 0:
+                #선 위에서 아래로->in
                 in_count += 1
-            elif prev_line_direction < 0 and line_direction >= 0:
-                # 객체가 아래에서 위로 이동했을 때 -> 'out'
+            elif prev_direction < 0 and curr_direction >= 0:
+                #선 아래에서 위로->out
                 out_count += 1
 
-            # 해당 트래커 ID는 카운팅 완료로 기록
+            #카운팅된 객체는 set에 추가
             counted_tracker_ids.add(tracker_id)
-            break  # 교차 확인 시 반복 종료
+            break
     
 class LineZoneAnnotator:
     
@@ -225,7 +224,7 @@ def process_frame(
     detections = smoother.update_with_detections(detections)
     
 
-    """감지된 객체에 대한 처리"""
+    """감지된 객체들의 처리"""
     for detection_idx in range(len(detections)):
         tracker_id = int(detections.tracker_id[detection_idx])
 
@@ -235,7 +234,7 @@ def process_frame(
         center_y = int((y_min + y_max) / 2)
 
 
-        #감지된 좌표로 TraceAnnotator 업데이트 (감지된 상태)
+        #TraceAnnotator 업데이트
         trace_annotator.update_trace(tracker_id, (center_x, center_y), predicted=False)
     
 
@@ -245,17 +244,17 @@ def process_frame(
                     
                     
                         
-    """감지되지 않으며 트래킹되고 있는 객체들에 대한 처리"""
+    """감지되지 않으며 트래킹되고 있는 객체들의 처리"""
     for track in tracker.lost_tracks:
         if track.state == TrackState.Lost:
             
             predicted_coords = track.mean[:2]  #Kalman 필터에서 예측된 좌표
             center_x, center_y = int(predicted_coords[0]), int(predicted_coords[1])
 
-            #예측된 좌표로 TraceAnnotator 업데이트 (예측된 상태)
+            #TraceAnnotator 업데이트
             trace_annotator.update_trace(track.external_track_id, (center_x, center_y), predicted=True)
 
-            #교차 여부 확인 (예측된 객체)
+            #교차 여부 확인
             previous_coordinates = trace_annotator.trace_data.get(track.external_track_id)
             if previous_coordinates and len(previous_coordinates) > 2:
                 check_line_crossing_multiple_zones(track.external_track_id, previous_coordinates, line_zones)
