@@ -322,12 +322,12 @@ def process_frame(
 
 
 def main():
-    weights = 'yolov8s.pt'
+    weights = 'yolov8n.pt'
     
     model = YOLO(weights)
     tracker=sv.ByteTrack(
         track_activation_threshold=0.55, #트래킹 임계값
-        lost_track_buffer=120,  # n 프레임만큼 트래킹
+        lost_track_buffer=30,  # n 프레임만큼 트래킹
         minimum_matching_threshold=0.8, #두 객체의 매칭값
         frame_rate=10,  # 초당 트래킹할 프레임
         minimum_consecutive_frames=3 #트래킹이 시작되기 위한 최소 Detected되는 수 
@@ -406,7 +406,7 @@ def main():
     
     conf_thres = 0.25
     classes = [2, 3, 5, 7] # bicycle,car,motorcycle,bus,truck
-    stride = 1
+    stride = 2
     
 
     if Cam:
@@ -425,19 +425,19 @@ def main():
     frame_delay = int(1000 / fps)
     
     
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
-    print(f'Webcam resolution: {int(width)}x{int(height)}')
+    print(f'Webcam resolution: {width}x{height}')
     
     
     output_filename = getNextFilename(base_name=output_filename, extension='mp4')
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_filename, fourcc, 30.0, (width,height))
     
-        
+    fdx=1
     index = 1
     prev_time = time.time()
     
@@ -465,20 +465,20 @@ def main():
         
             #Fps 계산
             current_time = time.time()
-            fps = 1 / (current_time - prev_time)
+            fdx = stride / (current_time - prev_time)
             prev_time = current_time
             
             #Fps cv2
             cv2.putText(
                 annotated_frame,
-                f'FPS: {fps:.2f}', 
+                f'FPS: {fdx:.2f}', 
                 (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 
                 1, 
                 (255, 0, 0),
                 2
                 )
-        
+            
         
             cv2.imshow('cv2', annotated_frame)
             out.write(annotated_frame)
@@ -486,7 +486,7 @@ def main():
         if cv2.waitKey(frame_delay) & 0xFF == ord('q'):
             break
         
-        index += 1
+        index+=1
         
     out.release()
     cap.release()
