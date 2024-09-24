@@ -13,8 +13,9 @@ from data.class_names import class_names
 from data.count import in_count,out_count
 
 from models.model_loader import load_model
-from track.trace_annotator import TraceAnnotator
-from track.line_zone import LineZone, LineZoneAnnotator, check_line_crossing_multiple_zones
+from annotator.trace_annotator import TraceAnnotator
+from annotator.LineZoneAnnotator import LineZoneAnnotator
+from track.line_zone import LineZone, check_line_crossing_multiple_zones
 
 from supervision.tracker.byte_tracker.basetrack import TrackState
 
@@ -94,18 +95,18 @@ def main():
     model = load_model()
     tracker = sv.ByteTrack(
         track_activation_threshold= 0.55,
-        lost_track_buffer= 30,
+        lost_track_buffer= 30, #몇 프레임 동안 트래킹 할지
         minimum_matching_threshold= 0.8,
-        frame_rate= 10,
+        frame_rate= 10, #초당 몇 프레임 트래킹 할지
         minimum_consecutive_frames = 1
     )
+    
     label_annotator = sv.LabelAnnotator()
     box_annotator = sv.BoxAnnotator()
     trace_annotator = TraceAnnotator(trace_length=5)
     line_annotator = LineZoneAnnotator()
     smoother = sv.DetectionsSmoother()
     
-    global in_count, out_count
     
     Cam=False
     width,height=1920,1800
@@ -124,10 +125,15 @@ def main():
         (729,612,1397,411)
         ]
     
-    line_zones = []
+    class_filtering=True
+    classes=[2,3,5,7]
+    conf_thres=0.25
+    stride=3
     
+
+    #line zones
+    line_zones = []
     for point in line_zone_points:
-        
         start_x, start_y, end_x, end_y = point
         if roi:
             line_zone = LineZone(
@@ -139,16 +145,10 @@ def main():
                 start=(start_x, start_y),
                 end=(end_x, end_y)
             )
-        
         line_zones.append(line_zone)
-    
-    class_filtering=True
-    classes=[2,3,5,7]
-    conf_thres=0.25
-    stride=3
-    
 
-
+    global in_count, out_count
+    
     if Cam:
         cap = cv2.VideoCapture(0)
     else:
@@ -159,7 +159,6 @@ def main():
         print('Could not open Cam or Video')
         return
 
-    
     
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
