@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
-from track.line_zone import LineZone
+from line_zone import LineZone
+
 
 class LineZoneAnnotator:
     def __init__(self, line_color=(0, 255, 255), thickness=2):
