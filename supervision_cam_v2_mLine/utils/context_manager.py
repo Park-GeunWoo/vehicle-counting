@@ -1,3 +1,7 @@
+import torch
+import time
+import contextlib
+
 class Profile(contextlib.ContextDecorator):
     """Context manager and decorator for profiling code execution time, with optional CUDA synchronization."""
 

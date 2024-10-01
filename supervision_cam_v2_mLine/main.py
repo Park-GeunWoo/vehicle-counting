@@ -8,7 +8,10 @@ import cv2
 import time
 import numpy as np
 import supervision as sv
-
+from supervision.geometry.core import Position
+from supervision.draw.color import Color
+import torchvision.models as models
+import torch
 from pathlib import Path
 
 FILE = Path(__file__).resolve()
@@ -23,10 +26,10 @@ from data.class_names import class_names
 from data.count import in_count,out_count
 
 from models.model_loader import load_model
-from annotator.trace_annotator import TraceAnnotator
-from annotator.LineZoneAnnotator import LineZoneAnnotator
+from annotator.annotator import TraceAnnotator,LineZoneAnnotator
 
-from line_zone import LineZone,  check_line_crossing_multiple_zones
+
+from line_zone import LineZone,process_detections
 
 from supervision.tracker.byte_tracker.basetrack import TrackState
 
@@ -42,7 +45,7 @@ def process_frame(
     label_annotator, 
     trace_annotator,
     line_annotator,
-    smoother,
+    #smoother,
     roi,
     roi_points
     ):
@@ -51,52 +54,31 @@ def process_frame(
         x_min, y_min, x_max, y_max = roi_points
         frame = frame[y_min:y_max, x_min:x_max]
         
-    results = model(frame)[0]
+    results = model(
+        source=frame,
+        conf=conf_thres
+        )[0]
     detections = sv.Detections.from_ultralytics(results)
+    
     detections = tracker.update_with_detections(detections)
-
+    
     if detections.tracker_id is None:
         return frame
+    #detections = smoother.update_with_detections(detections)
 
-    #detections = detections[np.isin(detections.class_id, classes)]
-    detections = detections[detections.confidence > conf_thres]
-    detections = smoother.update_with_detections(detections)
-
-    for detection_idx in range(len(detections)):
-        tracker_id = int(detections.tracker_id[detection_idx])
-        x_min, y_min, x_max, y_max = detections.xyxy[detection_idx]
-        center_x = int((x_min + x_max) / 2)
-        center_y = int((y_min + y_max) / 2)
-        trace_annotator.update_trace(tracker_id, (center_x, center_y), predicted=False)
-        previous_coordinates = trace_annotator.trace_data.get(tracker_id)
-
-        if previous_coordinates and len(previous_coordinates) > 2:
-            for line_zone in line_zones:
-                check_line_crossing_multiple_zones(tracker_id, previous_coordinates, line_zones)
-
-    for track in tracker.lost_tracks:
-        if track.state == TrackState.Lost:
-            predicted_coords = track.mean[:2]
-            center_x, center_y = int(predicted_coords[0]), int(predicted_coords[1])
-            trace_annotator.update_trace(track.external_track_id, (center_x, center_y), predicted=True)
-            previous_coordinates = trace_annotator.trace_data.get(track.external_track_id)
-            if previous_coordinates and len(previous_coordinates) > 2:
-                for line_zone in line_zones:
-                    check_line_crossing_multiple_zones(track.external_track_id, previous_coordinates, line_zones)
-
-    for track in tracker.removed_tracks:
-        trace_annotator.remove_trace(track.external_track_id)
-
-    labels = [f"#{tracker_id} {class_names.get(class_id, 'Unknown')} {confidence:.2f}" for tracker_id, class_id, confidence in zip(detections.tracker_id, detections.class_id, detections.confidence)]
+    labels = process_detections(
+        detections=detections,
+        tracker=tracker,
+        trace_annotator=trace_annotator,
+        line_zones=line_zones
+        )
     
-    annotated_frame = box_annotator.annotate(frame, detections)
-    annotated_frame = trace_annotator.annotate(annotated_frame)
+    #annotated_frame = box_annotator.annotate(frame, detections)
+    annotated_frame = trace_annotator.annotate(frame)
     annotated_frame = label_annotator.annotate(annotated_frame, detections, labels)
-
     for line_zone in line_zones:
         annotated_frame = line_annotator.annotate(annotated_frame, line_zone)
 
-    
     return annotated_frame
 
 
@@ -112,7 +94,7 @@ def main(
     track_buf=30,
     mm_thres=0.8,
     f_rate=10,
-    min_frames=2,
+    min_frames=3,
     trace_len=10,
     width=1920,
     height=1080,
@@ -130,14 +112,33 @@ def main(
         minimum_consecutive_frames = min_frames
     )
     
+    polygonzone_points=[
+        [670,400],
+        [1920,400],
+        [1920,1080],
+        [670,1080]
+        # [450, 200],   # 왼쪽 상단
+        # [1500,200],  # 오른쪽 상단
+        # [1500,800], # 오른쪽 하단
+        # [450,800]   # 왼쪽 하단
+        ]
+    line_zone_points=[
+        (1897, 611,1161, 945),
+        (925,805,1620,478),
+        (729,612,1397,411)
+        ]
+    roi_points=(670,400,1920,1080) #x1,y1,x2,y2
+    
+    scaled_line_zones = scale_line_zones(line_zone_points, width, height)
+    
     label_annotator = sv.LabelAnnotator()
     box_annotator = sv.BoxAnnotator()
     trace_annotator = TraceAnnotator(trace_length=trace_len)
     line_annotator = LineZoneAnnotator()
-    smoother = sv.DetectionsSmoother()
+    #smoother = sv.DetectionsSmoother()
     
-    input_path ="C:/Users/USER/Downloads/20240529_서평택IC사거리 교통량조사(76G)/1_Input 동측_G87/16-19/alwa_20240529_185838_F.mp4"
-    
+    input_path ="C:/Users/USER/Desktop/alwa_20240529_185838_F.mp4"
+    #print(cam)
     if cam:
         cap = cv2.VideoCapture(0)
     else:
@@ -154,24 +155,20 @@ def main(
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
+    x1,y1,x2,y2=0,0,0,0
+    output_filename = getNextFilename(base_name=output, extension='mp4')
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     if roi:
-        roi_points=(577,377,1904,1042)
         roi_points = scale_roi(roi_points, width, height)
         x1,y1,x2,y2=roi_points
+        out = cv2.VideoWriter(output_filename, fourcc, 30.0, (x2-x1, y2-y1))
     else:
         roi_points=None
-        
+        out = cv2.VideoWriter(output_filename, fourcc, 30.0, (width, height))
     
-    line_zone_points=[
-        (1897, 611,1161, 945),
-        (925,805,1620,478),
-        (729,612,1397,411)
-        ]
-    
-    scaled_line_zones = scale_line_zones(line_zone_points, width, height)
-    
-    if v_filtering:
-        classes=[2,3,5,7]
+    if not out.isOpened():
+        print("Error: Could not open video writer.")
+        return
 
             
     line_zones = []
@@ -186,14 +183,9 @@ def main(
                 start=(start_x, start_y),
                 end=(end_x, end_y)
             )
-            
         line_zones.append(line_zone)
         
     print(f'info : {width}x{height} FPS:{video_fps}')
-    
-    output_filename = getNextFilename(base_name=output, extension='mp4')
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_filename, fourcc, 30.0, (width, height))
 
     global in_count, out_count
     
@@ -201,12 +193,11 @@ def main(
     avrg_fps=0
     fps=0
     prev_time = time.time()
-    
+    start_time=time.time()
     while True:
         success, frame = cap.read()
         if not success:
             break
-
         
         if index % stride == 0:
             annotated_frame = process_frame(
@@ -220,7 +211,7 @@ def main(
                 label_annotator,
                 trace_annotator,
                 line_annotator,
-                smoother,
+                #smoother,
                 roi,
                 roi_points
                 )
@@ -252,23 +243,22 @@ def main(
                 )
             
             cv2.imshow('cv2', annotated_frame)
-            
             out.write(annotated_frame)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(1) & 0xFF == ord('q') or index==300:
             break
-
+        
         index += 1
 
+    end_time=time.time()
+    
+    print(f'total frame: {int(avrg_fps/index)}, {int(end_time-start_time)}sec')
     out.release()
     cap.release()
     cv2.destroyAllWindows()
-    
-    print(avrg_fps/index)
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    
     parser.add_argument("--weights", nargs="+", type=str, default='yolov8n.pt')
     parser.add_argument("--input", type=str, default='video.mp4')
     parser.add_argument("--output", type=str, default='result')

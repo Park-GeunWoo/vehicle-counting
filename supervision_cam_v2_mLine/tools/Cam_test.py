@@ -1,7 +1,9 @@
 import cv2
 
+input_path ="C:/Users/USER/Downloads/20240529_서평택IC사거리 교통량조사(76G)/1_Input 동측_G87/16-19/alwa_20240529_185838_F.mp4"
+
 # 웹캠 열기
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(input_path)
 
 if not cap.isOpened():
     print("Could not open webcam")

@@ -13,7 +13,6 @@ ROOT = FILE.parents[1]
 
 
 LOGGING_NAME = "yolo"
-
 def set_logging(name=LOGGING_NAME, verbose=True):
     """Configures logging with specified verbosity; `name` sets the logger's name, `verbose` controls logging level."""
     rank = int(os.getenv("RANK", -1))  # rank in world for Multi-GPU trainings
@@ -39,6 +38,7 @@ def set_logging(name=LOGGING_NAME, verbose=True):
             },
         }
     )
+
 
 
 set_logging(LOGGING_NAME)

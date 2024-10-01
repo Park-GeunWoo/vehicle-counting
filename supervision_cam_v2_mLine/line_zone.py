@@ -1,8 +1,12 @@
 import cv2
 import numpy as np
 from typing import Tuple, List
+
 from data.count import in_count, out_count
 
+from data.class_names import class_names
+
+from supervision.tracker.byte_tracker.basetrack import TrackState
 counted_tracker_ids = set()
 
 class LineZone:
@@ -18,6 +22,58 @@ class LineZone:
         C, D = prev_pos, curr_pos
         return self._ccw(A, C, D) != self._ccw(B, C, D) and self._ccw(A, B, C) != self._ccw(A, B, D)
 
+def process_detections(
+        detections,
+        tracker,
+        trace_annotator,
+        line_zones
+    ):
+    """
+    감지된 객체의 추적 및 라인 교차 여부를 확인하는 함수.
+    
+    Parameters:
+    - detections: 감지된 객체 목록
+    - tracker: 트래커 객체
+    - trace_annotator: 경로 어노테이터 객체
+    - line_zones: 라인 존 객체 목록
+    - check_line_crossing_multiple_zones: 라인 교차 여부를 확인하는 함수
+    """
+    # 감지된 객체에 대한 추적 정보 업데이트 및 라인 교차 확인
+    for detection_idx in range(len(detections)):
+        tracker_id = int(detections.tracker_id[detection_idx])
+        x_min, y_min, x_max, y_max = detections.xyxy[detection_idx]
+        center_x = int((x_min + x_max) / 2)
+        center_y = int((y_min + y_max) / 2)
+        
+        # 경로 업데이트
+        trace_annotator.update_trace(tracker_id, (center_x, center_y), predicted=False)
+        previous_coordinates = trace_annotator.trace_data.get(tracker_id)
+
+        # 이전 경로가 있고 길이가 2 이상일 때 라인 교차 확인
+        if previous_coordinates and len(previous_coordinates) > 2:
+            check_line_crossing_multiple_zones(tracker_id, previous_coordinates, line_zones)
+
+    # 잃어버린 객체에 대한 추적 정보 처리
+    for track in tracker.lost_tracks:
+        if track.state == TrackState.Lost:
+            predicted_coords = track.mean[:2]
+            center_x, center_y = int(predicted_coords[0]), int(predicted_coords[1])
+            
+            # 경로 업데이트 (예측된 좌표로)
+            trace_annotator.update_trace(track.external_track_id, (center_x, center_y), predicted=True)
+            previous_coordinates = trace_annotator.trace_data.get(track.external_track_id)
+
+            # 이전 경로가 있고 길이가 2 이상일 때 라인 교차 확인
+            if previous_coordinates and len(previous_coordinates) > 2:
+                check_line_crossing_multiple_zones(track.external_track_id, previous_coordinates, line_zones)
+
+    # 추적이 중단된 객체 처리
+    for track in tracker.removed_tracks:
+        trace_annotator.remove_trace(track.external_track_id)
+        
+    labels = [f"#{tracker_id} {class_names.get(class_id, 'Unknown')} {confidence:.2f}" for tracker_id, class_id, confidence in zip(detections.tracker_id, detections.class_id, detections.confidence)]
+
+    return labels
 
 def check_line_crossing_multiple_zones(
     tracker_id: int,
