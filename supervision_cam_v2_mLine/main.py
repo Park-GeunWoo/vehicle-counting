@@ -6,32 +6,32 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import argparse
 import cv2
 import time
+import torch
 import numpy as np
 import supervision as sv
-from supervision.geometry.core import Position
 from supervision.draw.color import Color
-import torchvision.models as models
-import torch
-from pathlib import Path
+from supervision.geometry.core import Position
+from supervision.tracker.byte_tracker.basetrack import TrackState
 
+from pathlib import Path
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]
             
+from utils.print_args import print_args
 from utils.file_utils import getNextFilename
+
+from line_zone import LineZone,process_detections
+
 from utils.roi_scaler import scale_roi
 from utils.line_zones_scaler import scale_line_zones
-from utils.print_args import print_args
+from utils.gpu_usage import get_gpu_usage
 
 from data.class_names import class_names
 from data.count import in_count,out_count
 
 from models.model_loader import load_model
+
 from annotator.annotator import TraceAnnotator,LineZoneAnnotator
-
-
-from line_zone import LineZone,process_detections
-
-from supervision.tracker.byte_tracker.basetrack import TrackState
 
         
 def process_frame(
@@ -54,32 +54,55 @@ def process_frame(
         x_min, y_min, x_max, y_max = roi_points
         frame = frame[y_min:y_max, x_min:x_max]
         
-    results = model(
-        source=frame,
-        conf=conf_thres
-        )[0]
-    detections = sv.Detections.from_ultralytics(results)
-    
-    detections = tracker.update_with_detections(detections)
-    
-    if detections.tracker_id is None:
-        return frame
-    #detections = smoother.update_with_detections(detections)
+    # 추론 시간 측정을 위한 CUDA 이벤트 생성
+    starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
 
-    labels = process_detections(
-        detections=detections,
-        tracker=tracker,
-        trace_annotator=trace_annotator,
-        line_zones=line_zones
-        )
+    # 추론 시작
+    with torch.no_grad():  # Gradient 연산 비활성화
+        starter.record()  # 시작 시간 기록
+        results = model(source=frame, conf=conf_thres)[0]
+        detections = sv.Detections.from_ultralytics(results)
+        detections = tracker.update_with_detections(detections)
+        
+        if detections.tracker_id is None:
+            return frame
+
+        labels = process_detections(
+            detections=detections,
+            tracker=tracker,
+            trace_annotator=trace_annotator,
+            line_zones=line_zones
+            )
+        
+        gpu_util, mem_util, total_mem, used_mem, free_mem = get_gpu_usage()
+        
+        ender.record()  # 끝나는 시간 기록
+
+    # GPU 연산이 끝날 때까지 대기
+    torch.cuda.synchronize()
+    # 추론 시간 계산 (milliseconds 단위)
+    inference_time = starter.elapsed_time(ender) * 1e-3  # 초 단위로 변환
     
-    #annotated_frame = box_annotator.annotate(frame, detections)
+
+
     annotated_frame = trace_annotator.annotate(frame)
     annotated_frame = label_annotator.annotate(annotated_frame, detections, labels)
     for line_zone in line_zones:
         annotated_frame = line_annotator.annotate(annotated_frame, line_zone)
+    # 추론 시간 출력 (프레임에 표시)
 
-    return annotated_frame
+    if gpu_util and mem_util:
+        cv2.putText(
+            annotated_frame,
+            f'GPU Usage: {gpu_util}% | Mem: {used_mem}/{total_mem} MB',
+            (10, 80),  # 텍스트 위치
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,  # 텍스트 크기
+            (0, 200, 0),  # 텍스트 색상 (녹색)
+            2  # 두께
+        )
+    
+    return annotated_frame,inference_time
 
 
 def main(
@@ -192,6 +215,7 @@ def main(
     index = 1
     avrg_fps=0
     fps=0
+    total_inf_time=0
     prev_time = time.time()
     start_time=time.time()
     while True:
@@ -200,7 +224,7 @@ def main(
             break
         
         if index % stride == 0:
-            annotated_frame = process_frame(
+            annotated_frame,inference_time= process_frame(
                 frame, 
                 index,
                 model,
@@ -221,10 +245,11 @@ def main(
             avrg_fps+=fps
             prev_time = current_time
             
+            total_inf_time+=inference_time
             
             cv2.putText(
                 annotated_frame,
-                f'FPS: {fps:.2f}', 
+                f'frame: {index} FPS: {fps:.1f} inf and track: {inference_time:.3f}s', 
                 (10, 30), 
                 cv2.FONT_HERSHEY_SIMPLEX,
                 1,
@@ -235,7 +260,7 @@ def main(
             cv2.putText(
                 annotated_frame, 
                 f"IN Count: {in_count[0]} OUT Count: {out_count[0]}", 
-                (80, 100), 
+                (80, 150), 
                 cv2.FONT_HERSHEY_SIMPLEX, 
                 2, 
                 (125, 0, 255),
@@ -245,14 +270,14 @@ def main(
             cv2.imshow('cv2', annotated_frame)
             out.write(annotated_frame)
 
-        if cv2.waitKey(1) & 0xFF == ord('q') or index==300:
+        if cv2.waitKey(1) & 0xFF == ord('q'):
             break
         
         index += 1
 
     end_time=time.time()
     
-    print(f'total frame: {int(avrg_fps/index)}, {int(end_time-start_time)}sec')
+    print(f'Total Frames:{index} Average FPS:{int(avrg_fps/index)}, Total Time :{int(end_time-start_time)}s  Total Inf Time: {total_inf_time:.3f}')
     out.release()
     cap.release()
     cv2.destroyAllWindows()
