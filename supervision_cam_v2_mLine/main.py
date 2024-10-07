@@ -7,11 +7,9 @@ import argparse
 import cv2
 import time
 import torch
+import subprocess
 import numpy as np
 import supervision as sv
-from supervision.draw.color import Color
-from supervision.geometry.core import Position
-from supervision.tracker.byte_tracker.basetrack import TrackState
 
 from pathlib import Path
 FILE = Path(__file__).resolve()
@@ -24,10 +22,7 @@ from line_zone import LineZone,process_detections
 
 from utils.roi_scaler import scale_roi
 from utils.line_zones_scaler import scale_line_zones
-from utils.gpu_usage import get_gpu_usage
-
-from data.class_names import class_names
-from data.count import in_count,out_count
+from data.data_store import in_count,out_count,update
 
 from models.model_loader import load_model
 
@@ -84,6 +79,8 @@ def main(
     input,
     output='result',
     cam=False,
+    loc_name='Korea',
+    send_val='x',
     v_filtering=False,
     conf_thres=0.25,
     stride=1,
@@ -98,7 +95,6 @@ def main(
     video_fps=30,
     roi=False
     ):
-    
     model = load_model(weights)
     
     tracker = sv.ByteTrack(
@@ -182,7 +178,8 @@ def main(
             )
         line_zones.append(line_zone)
         
-    print(f'info : {width}x{height} FPS:{video_fps}')
+    vid_info=f'Resolution:{width}x{height} FPS:{video_fps}'
+    print(f'info:{vid_info}')
 
     global in_count, out_count
     
@@ -253,6 +250,18 @@ def main(
     out.release()
     cap.release()
     cv2.destroyAllWindows()
+    
+    if send_val!='x':
+        update(
+            new_name=loc_name,
+            send_val=send_val,
+            video_info=vid_info,
+            total_frames=index,
+            avg_fps=int(avrg_fps/index),
+            total_time=int(end_time-start_time)
+            )
+        
+        subprocess.run(["python", "./server/client.py"])
 
 def parse_opt():
     parser = argparse.ArgumentParser()
@@ -260,6 +269,8 @@ def parse_opt():
     parser.add_argument("--input", type=str, default='video.mp4')
     parser.add_argument("--output", type=str, default='result')
     parser.add_argument("--cam", action="store_true")
+    parser.add_argument("--loc-name", type=str,default='Korea',help='location_name')
+    parser.add_argument("--send-val", type=str,default='all',choices=['in','out','all','x'],help='send \'in\' or \'out\' value or not send\'x\'')
     parser.add_argument("--v-filtering", action='store_true')
     parser.add_argument("--conf-thres", type=float, default=0.25)
     parser.add_argument("--stride", type=int, default=1)

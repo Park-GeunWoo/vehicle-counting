@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from typing import Tuple, List
 
-from data.count import in_count, out_count
+from data.data_store import in_count, out_count
 
 from data.class_names import class_names
 
