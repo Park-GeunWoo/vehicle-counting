@@ -1,2 +1,4 @@
 __pychache__/
-
+data_store.json
+vehicle_data.csv
+yolov8n.pt
