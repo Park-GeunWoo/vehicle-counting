@@ -1,4 +1,5 @@
 __pychache__/
+*.mp4
 data_store.json
 vehicle_data.csv
 yolov8n.pt
