@@ -26,9 +26,9 @@ def save_data():
     
 def update(new_name, send_val,video_info,total_frames,avg_fps,total_time):
     global data_store,in_count,out_count
-    data_store["location_name"] = new_name  # 딕셔너리의 location_name 업데이트
-    data_store["ioo"] = send_val  # 딕셔너리의 ioo 업데이트
-    data_store["vid_info"] = video_info  # 딕셔너리의 vid_info 업데이트
+    data_store["location_name"] = new_name
+    data_store["ioo"] = send_val
+    data_store["vid_info"] = video_info
     data_store['total_frames']=total_frames
     data_store['avg_fps']=avg_fps
     data_store['total_frames']=total_time

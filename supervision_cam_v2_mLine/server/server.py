@@ -40,7 +40,7 @@ def receive_data():
 
 @app.route('/view_data')
 def view_data():
-    # CSV 파일에서 데이터를 읽어와 HTML로 렌더링
+    
     with open(CSV_FILE_PATH, mode='r') as file:
         csv_data = list(csv.reader(file))
     
