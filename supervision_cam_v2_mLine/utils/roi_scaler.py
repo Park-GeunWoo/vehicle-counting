@@ -1,5 +1,5 @@
 def scale_roi(roi_points, input_width, input_height, base_width=1920, base_height=1080):
-    """해상도에 맞춰 ROI 좌표를 스케일링하는 함수"""
+    """해상도에 맞춰 ROI 스케일링하는 함수"""
     scale_x = input_width / base_width
     scale_y = input_height / base_height
     x_min = int(roi_points[0] * scale_x)

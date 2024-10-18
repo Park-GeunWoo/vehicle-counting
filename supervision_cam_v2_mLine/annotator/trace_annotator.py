@@ -26,6 +26,7 @@ class TraceAnnotator:
             for i in range(1, len(trace_points)):
                 prev_point, prev_predicted = trace_points[i - 1]
                 curr_point, curr_predicted = trace_points[i]
-                color = self.line_color_predicted if curr_predicted else self.line_color_detected
-                cv2.line(frame, prev_point, curr_point, color, self.thickness)
+                if curr_predicted:
+                    color = self.line_color_predicted
+                    cv2.line(frame, prev_point, curr_point, color, self.thickness)
         return frame

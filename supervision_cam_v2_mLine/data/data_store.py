@@ -6,12 +6,10 @@ import json
 JSON_FILE_PATH = 'data_store.json'
 
 data_store = {
-    "location_name": "Unknown",
-    "ioo": None,
-    "vid_info": None,
-    "total_frames": 0,  # 총 프레임 수
-    "avg_fps": 0,  # 평균 FPS
-    "total_time": 0  # 총 시간
+    'edge_id': '0',
+    'location_name': 'Korea',
+    'gps': 'Unknown',
+    'time': 0
 }
 
 # 데이터를 JSON 파일에 저장
@@ -19,17 +17,15 @@ def save_data():
     with open(JSON_FILE_PATH, 'w') as json_file:
         json.dump({
             "data_store": data_store,
-            "in_count": in_count[0],
-            "out_count": out_count[0]
+            "count": in_count[0]
         }, json_file, indent=4)
     
     
-def update(new_name, send_val,video_info,total_frames,avg_fps,total_time):
+def update(edge_id, location_name, gps, time, count):
     global data_store,in_count,out_count
-    data_store["location_name"] = new_name
-    data_store["ioo"] = send_val
-    data_store["vid_info"] = video_info
-    data_store['total_frames']=total_frames
-    data_store['avg_fps']=avg_fps
-    data_store['total_frames']=total_time
+    data_store["edge_id"] = edge_id
+    data_store["location_name"] = location_name
+    data_store["gps"] = gps
+    data_store["time"] = time
     save_data()
+    

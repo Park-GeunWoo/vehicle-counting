@@ -1,5 +1,5 @@
 import cv2
-
+import os
 def click_event(event, x, y, flags, param):
     if event == cv2.EVENT_LBUTTONDOWN:
         print(f"{x}, {y}")
@@ -9,12 +9,8 @@ def click_event(event, x, y, flags, param):
 
 
 
-video_path="C:/Users/USER/Downloads/20240529_서평택IC사거리 교통량조사(76G)/1_Input 동측_G87/16-19/alwa_20240529_185838_F.mp4"#8
-video_path="C:/Users/USER/Desktop/alwa_20240529_185838_F.mp4"
-
+video_path = "input북측18.mp4"
 cap = cv2.VideoCapture(video_path)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
 if not cap.isOpened():
     print("Could not open video file.")
     exit()

@@ -3,9 +3,12 @@ import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+
 import argparse
 import cv2
 import time
+import subprocess
+from datetime import datetime  # 시간을 포맷하기 위한 모듈
 import torch
 import subprocess
 import numpy as np
@@ -27,35 +30,39 @@ from data.data_store import in_count,out_count,update
 from models.model_loader import load_model
 
 from annotator.annotator import TraceAnnotator,LineZoneAnnotator
+from ultralytics import solutions
 
-        
+classes=[1,2,3,5,7]
 def process_frame(
     frame,
     index, 
     model, 
-    tracker, 
+    tracker,
+    smoother,
     conf_thres, 
     line_zones,
     box_annotator, 
     label_annotator, 
     trace_annotator,
     line_annotator,
-    #smoother,
     roi,
     roi_points
     ):
-    
+    global classes
     if roi:
         x_min, y_min, x_max, y_max = roi_points
         frame = frame[y_min:y_max, x_min:x_max]
-        
+    
+    annotated_frame = frame.copy()
 
     results = model(source=frame, conf=conf_thres)[0]
     detections = sv.Detections.from_ultralytics(results)
+    detections=detections[np.isin(detections.class_id,classes)]
     detections = tracker.update_with_detections(detections)
+    detections = smoother.update_with_detections(detections)
     
     if detections.tracker_id is None:
-        return frame
+        return annotated_frame
 
     labels = process_detections(
         detections=detections,
@@ -65,8 +72,10 @@ def process_frame(
         )
 
 
-    annotated_frame = trace_annotator.annotate(frame)
+    
+    annotated_frame = trace_annotator.annotate(annotated_frame)
     annotated_frame = label_annotator.annotate(annotated_frame, detections, labels)
+    annotated_frame = box_annotator.annotate(annotated_frame,detections)
     for line_zone in line_zones:
         annotated_frame = line_annotator.annotate(annotated_frame, line_zone)
 
@@ -80,23 +89,24 @@ def main(
     output='result',
     cam=False,
     loc_name='Korea',
-    send_val='x',
     v_filtering=False,
     conf_thres=0.25,
+    iou=0.55,
+    id='0',
     stride=1,
     track_thres=0.55,
     track_buf=30,
     mm_thres=0.8,
     f_rate=10,
     min_frames=3,
-    trace_len=10,
+    trace_len=5,
     width=1920,
     height=1080,
     video_fps=30,
     roi=False
     ):
     model = load_model(weights)
-    
+
     tracker = sv.ByteTrack(
         track_activation_threshold=track_thres,
         lost_track_buffer=track_buf, #몇 프레임 동안 트래킹 할지
@@ -110,17 +120,23 @@ def main(
         [1920,400],
         [1920,1080],
         [670,1080]
-        # [450, 200],   # 왼쪽 상단
-        # [1500,200],  # 오른쪽 상단
-        # [1500,800], # 오른쪽 하단
-        # [450,800]   # 왼쪽 하단
         ]
     line_zone_points=[
-        (1897, 611,1161, 945),
-        (925,805,1620,478),
-        (729,612,1397,411)
+
+        # (890,680,1760,480), #서측
+        # (1110,865,1840,510),
+        # (1667,990,1910,530)
+        # (640,760,1510,480), #남측
+        # (1010,980,1690,520), 
+        # (1730,980,1810,530)
+        # (860,760,1650,440), #동
+        # (1220,990,1750,440),
+        # (1740,990,1840,450)
+        (810,770,1700,530),
+        (1150,1050,1830,570),
+        (1720,1050,1900,590)
         ]
-    roi_points=(670,400,1920,1080) #x1,y1,x2,y2
+    roi_points=(670,350,1920,1080) #x1,y1,x2,y2
     
     scaled_line_zones = scale_line_zones(line_zone_points, width, height)
     
@@ -128,9 +144,9 @@ def main(
     box_annotator = sv.BoxAnnotator()
     trace_annotator = TraceAnnotator(trace_length=trace_len)
     line_annotator = LineZoneAnnotator()
-    #smoother = sv.DetectionsSmoother()
+    smoother = sv.DetectionsSmoother()
     
-    input_path ="C:/Users/USER/Desktop/alwa_20240529_185838_F.mp4"
+    input_path ="input북측18.mp4"
     #print(cam)
     if cam:
         cap = cv2.VideoCapture(0)
@@ -167,12 +183,12 @@ def main(
     line_zones = []
     for start_x, start_y, end_x, end_y in scaled_line_zones:
         if roi:
-            line_zone=LineZone(
-                start=(start_x-x1,start_y-y1),
-                end=(end_x-x1,end_y-y1)
-                )
-        else:
-            line_zone = LineZone(
+            start_x-=x1
+            start_y-=y1
+            end_x-=x1
+            end_y-=y1
+        
+        line_zone = LineZone(
                 start=(start_x, start_y),
                 end=(end_x, end_y)
             )
@@ -188,10 +204,26 @@ def main(
     fps=0
     prev_time = time.time()
     start_time=time.time()
+    last_send_time = start_time
+
+    # formatted_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+    #         # 데이터 전송
+    # update(
+    #     edge_id=id,
+    #     location_name=loc_name,
+    #     gps=None,
+    #     time=formatted_time,
+    #     count=in_count[0]
+    # )
+    # subprocess.run(["python", "./server/client.py"])
+    
     while True:
         success, frame = cap.read()
         if not success:
             break
+        
+        # if 3100<=index and index<=3200:
+        #     cv2.imwrite(f'{index}-1.jpg', frame)
         
         if index % stride == 0:
             annotated_frame= process_frame(
@@ -199,13 +231,13 @@ def main(
                 index,
                 model,
                 tracker,
+                smoother,
                 conf_thres,
                 line_zones,
                 box_annotator,
                 label_annotator,
                 trace_annotator,
                 line_annotator,
-                #smoother,
                 roi,
                 roi_points
                 )
@@ -218,7 +250,7 @@ def main(
             
             cv2.putText(
                 annotated_frame,
-                f'frame: {index} FPS: {fps:.1f}', 
+                f'FPS: {fps:.1f}', 
                 (10, 30), 
                 cv2.FONT_HERSHEY_SIMPLEX,
                 1,
@@ -227,8 +259,8 @@ def main(
                 )
             
             cv2.putText(
-                annotated_frame, 
-                f"IN Count: {in_count[0]} OUT Count: {out_count[0]}", 
+                annotated_frame,
+                f"Count: {in_count[0]}", 
                 (80, 150), 
                 cv2.FONT_HERSHEY_SIMPLEX, 
                 2, 
@@ -236,9 +268,27 @@ def main(
                 2
                 )
             
+            #print(f'\rframe {index}',end='')
             cv2.imshow('cv2', annotated_frame)
+            
             out.write(annotated_frame)
 
+        # 1분마다 전송
+        if current_time - last_send_time >= 60:
+            print(f"Sending data at frame {index}, Time: {current_time - start_time:.2f} seconds")
+            formatted_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # 데이터 전송
+            update(
+                edge_id=id,
+                location_name=loc_name,
+                gps=None,
+                time=formatted_time,
+                count=in_count[0]
+            )
+            
+            subprocess.run(["python", "./server/client.py"])
+            last_send_time = current_time
+                
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
         
@@ -250,18 +300,7 @@ def main(
     out.release()
     cap.release()
     cv2.destroyAllWindows()
-    
-    if send_val!='x':
-        update(
-            new_name=loc_name,
-            send_val=send_val,
-            video_info=vid_info,
-            total_frames=index,
-            avg_fps=int(avrg_fps/index),
-            total_time=int(end_time-start_time)
-            )
-        
-        subprocess.run(["python", "./server/client.py"])
+
 
 def parse_opt():
     parser = argparse.ArgumentParser()
@@ -270,16 +309,17 @@ def parse_opt():
     parser.add_argument("--output", type=str, default='result')
     parser.add_argument("--cam", action="store_true")
     parser.add_argument("--loc-name", type=str,default='Korea',help='location_name')
-    parser.add_argument("--send-val", type=str,default='all',choices=['in','out','all','x'],help='send \'in\' or \'out\' value or not send\'x\'')
     parser.add_argument("--v-filtering", action='store_true')
     parser.add_argument("--conf-thres", type=float, default=0.25)
+    parser.add_argument("--iou", type=float,default=0.55)
+    parser.add_argument("--id", type=str,default='0')
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--track-thres", type=float, default=0.55,help='track_activation_threshold')
-    parser.add_argument("--track-buf",type=int,default=30)
+    parser.add_argument("--track-buf",type=int,default=60)
     parser.add_argument("--mm-thres",type=float,default=0.8,help='minimum_matching_threshold')
-    parser.add_argument("--f-rate",type=int,default=10,help='frame rate')
+    parser.add_argument("--f-rate",type=int,default=20,help='frame rate')
     parser.add_argument("--min-frames",type=int,default=2,help='minimum_consecutive_frames')
-    parser.add_argument("--trace-len",type=int,default=10)
+    parser.add_argument("--trace-len",type=int,default=5)
     parser.add_argument("--width", type=int, default=1920, help="Frame width")
     parser.add_argument("--height", type=int, default=1080, help="Frame height")
     parser.add_argument("--video-fps", type=int, default=30, help="Webcam FPS setting")

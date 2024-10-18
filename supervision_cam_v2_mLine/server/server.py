@@ -1,16 +1,19 @@
 import csv
+import logging
 from flask import Flask, request, jsonify, render_template
 
 app = Flask(__name__)
 
 CSV_FILE_PATH = 'vehicle_data.csv'
 
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
+
 def init_csv_file():
     try:
         with open(CSV_FILE_PATH, mode='x', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(['Location Name', 'In Count', 'Out Count', 
-                             'Video Info', 'Total Time', 'Average FPS', 'Total Frames'])
+            writer.writerow(['Edge ID','Location', 'GPS' ,'Time', 'Count'])
     except FileExistsError:
         pass
 
@@ -18,24 +21,19 @@ def init_csv_file():
 @app.route('/receive_data', methods=['POST'])
 def receive_data():
     data = request.get_json()
-    
-    vehicle_in_count = data.get('in_count')
-    vehicle_out_count = data.get('out_count')
-    
+    print(data)
+    count = data.get('count')
     data_store = data.get('data_store', {})
+    edge_id=data_store.get('edge_id')
     location_name = data_store.get('location_name')
-    vid_info = data_store.get('vid_info')
-    total_time = data_store.get('total_time')
-    avg_fps = data_store.get('avg_fps')
-    total_frames = data_store.get('total_frames')
+    gps_point=data_store.get('gps')
+    time = data_store.get('time')
 
     with open(CSV_FILE_PATH, mode='a', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow([location_name, vehicle_in_count, vehicle_out_count, 
-                         vid_info, total_time, avg_fps, total_frames])
-    
+        writer.writerow([edge_id,location_name,gps_point,time,count])
     return jsonify({
-        "message": f"Received {location_name}, In: {vehicle_in_count}, Out: {vehicle_out_count}, Video Info: {vid_info}, Total Time: {total_time}, Average FPS: {avg_fps}, Total Frames: {total_frames}"
+        "message": f"ID {edge_id}, Received {location_name}, GPS {gps_point}, Count {count}, Time {time}"
     })
 
 @app.route('/view_data')
@@ -50,3 +48,4 @@ def view_data():
 if __name__ == '__main__':
     init_csv_file()
     app.run(debug=True, host='0.0.0.0', port=5000)
+    #rstp

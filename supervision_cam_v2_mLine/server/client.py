@@ -1,11 +1,15 @@
 import requests
 import json
+import os
 
-JSON_FILE_PATH = 'data_store.json'
+# JSON 파일의 상대 경로 지정
+
+JSON_FILE_PATH = os.path.join('..', 'data', 'data_store.json')
+JSON_FILE_PATH='data_store.json'
 
 def load_data():
     try:
-        with open(JSON_FILE_PATH, 'r') as json_file:
+        with open(JSON_FILE_PATH, 'r', encoding='utf-8') as json_file:
             data = json.load(json_file)
             return data
     except FileNotFoundError:

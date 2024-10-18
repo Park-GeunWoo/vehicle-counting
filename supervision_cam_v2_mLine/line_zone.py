@@ -71,7 +71,9 @@ def process_detections(
     for track in tracker.removed_tracks:
         trace_annotator.remove_trace(track.external_track_id)
         
-    labels = [f"#{tracker_id} {class_names.get(class_id, 'Unknown')} {confidence:.2f}" for tracker_id, class_id, confidence in zip(detections.tracker_id, detections.class_id, detections.confidence)]
+    labels = [f"#{tracker_id} {class_names.get(class_id, 'Unknown')} {confidence:.2f}" 
+              for tracker_id, class_id, confidence in zip(detections.tracker_id, detections.class_id, detections.confidence)
+              ]
 
     return labels
 
@@ -104,10 +106,10 @@ def check_line_crossing_multiple_zones(
                 
                 in_count[0] += 1
                 
-            elif prev_direction < 0 and curr_direction >= 0:
-                #선 아래에서 위로->out
+            # elif prev_direction < 0 and curr_direction >= 0:
+            #     #선 아래에서 위로->out
                 
-                out_count[0] += 1
+            #     out_count[0] += 1
 
             #카운팅된 객체는 set에 추가
             counted_tracker_ids.add(tracker_id)
