@@ -53,7 +53,7 @@ def process_detections(
         if previous_coordinates and len(previous_coordinates) > 2:
             check_line_crossing_multiple_zones(tracker_id, previous_coordinates, line_zones)
 
-    # 잃어버린 객체에 대한 추적 정보 처리
+    # # 잃어버린 객체에 대한 추적 정보 처리
     for track in tracker.lost_tracks:
         if track.state == TrackState.Lost:
             predicted_coords = track.mean[:2]
