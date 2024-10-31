@@ -3,7 +3,6 @@ import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-
 import argparse
 import cv2
 import time
@@ -12,6 +11,8 @@ from datetime import datetime
 import torch
 import subprocess
 import numpy as np
+
+from ultralytics import YOLO
 import supervision as sv
 
 from pathlib import Path
@@ -49,6 +50,7 @@ def process_frame(
     roi_points
     ):
     global classes
+    
     if roi:
         x_min, y_min, x_max, y_max = roi_points
         frame = frame[y_min:y_max, x_min:x_max]
@@ -105,8 +107,10 @@ def main(
     video_fps=30,
     roi=False
     ):
-    model = load_model(weights)
-
+    model = YOLO('yolov8n.pt')
+    model.export(format='engine')
+    tensorrt_model=YOLO('yolov8n.engine')
+    
     tracker = sv.ByteTrack(
         track_activation_threshold=track_thres,
         lost_track_buffer=track_buf, #몇 프레임 동안 트래킹 할지
@@ -140,10 +144,11 @@ def main(
     
     scaled_line_zones = scale_line_zones(line_zone_points, width, height)
     
-    label_annotator = sv.LabelAnnotator()
-    box_annotator = sv.BoxAnnotator()
     trace_annotator = TraceAnnotator(trace_length=trace_len)
     line_annotator = LineZoneAnnotator()
+    
+    label_annotator = sv.LabelAnnotator()
+    box_annotator = sv.BoxAnnotator()
     smoother = sv.DetectionsSmoother()
     
     input_path ="input서측18.mp4"
@@ -227,19 +232,19 @@ def main(
         
         if index % stride == 0:
             annotated_frame= process_frame(
-                frame, 
-                index,
-                model,
-                tracker,
-                smoother,
-                conf_thres,
-                line_zones,
-                box_annotator,
-                label_annotator,
-                trace_annotator,
-                line_annotator,
-                roi,
-                roi_points
+                frame=frame,
+                index=index,
+                model=tensorrt_model,
+                tracker=tracker,
+                smoother=smoother,
+                conf_thres=conf_thres,
+                line_zones=line_zone,
+                box_annotator=box_annotator,
+                label_annotator=label_annotator,
+                trace_annotator=trace_annotator,
+                line_annotator=line_zone,
+                roi=roi,
+                roi_points=roi_points
                 )
 
             current_time = time.time()

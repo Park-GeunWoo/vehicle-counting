@@ -8,12 +8,10 @@ import argparse
 import cv2
 import time
 import subprocess
-from datetime import datetime  # 시간을 포맷하기 위한 모듈
+from datetime import datetime
 import torch
 import subprocess
 import numpy as np
-
-from ultralytics import YOLO
 import supervision as sv
 
 from pathlib import Path
@@ -34,7 +32,6 @@ from models.model_loader import load_model
 from annotator.annotator import TraceAnnotator,LineZoneAnnotator
 from ultralytics import solutions
 
-
 classes=[1,2,3,5,7]
 def process_frame(
     frame,
@@ -43,8 +40,11 @@ def process_frame(
     tracker,
     smoother,
     conf_thres, 
+    line_zones,
     box_annotator, 
-    label_annotator,
+    label_annotator, 
+    trace_annotator,
+    line_annotator,
     roi,
     roi_points
     ):
@@ -64,8 +64,22 @@ def process_frame(
     if detections.tracker_id is None:
         return annotated_frame
 
-    annotated_frame = box_annotator.annotate(annotated_frame,detections)
+    labels = process_detections(
+        detections=detections,
+        tracker=tracker,
+        trace_annotator=trace_annotator,
+        line_zones=line_zones
+        )
 
+
+    
+    annotated_frame = trace_annotator.annotate(annotated_frame)
+    annotated_frame = label_annotator.annotate(annotated_frame, detections, labels)
+    annotated_frame = box_annotator.annotate(annotated_frame,detections)
+    for line_zone in line_zones:
+        annotated_frame = line_annotator.annotate(annotated_frame, line_zone)
+
+    
     return annotated_frame
 
 
@@ -91,8 +105,7 @@ def main(
     video_fps=30,
     roi=False
     ):
-    model = YOLO('yolov8n.pt')
-    
+    model = load_model(weights)
 
     tracker = sv.ByteTrack(
         track_activation_threshold=track_thres,
@@ -102,7 +115,25 @@ def main(
         minimum_consecutive_frames = min_frames
     )
     
-    
+    line_zone_points=[
+
+        (890,680,1760,480), #서측
+        (1110,865,1840,510),
+        (1667,990,1910,530)
+        # (640,760,1510,480), #남측
+        # (1010,980,1690,520), 
+        # (1730,980,1810,530)
+        # (860,760,1650,440), #동
+        # (1220,990,1750,440),
+        # (1740,990,1840,450)
+        # (810,770,1700,530), #북
+        # (1150,1050,1830,570),
+        # (1720,1050,1900,590)
+        ]
+    for sx,sy,ex,ey in line_zone_points:
+        start, end = sv.Point(x=sx, y=sy), sv.Point(x=ex, y=ey)
+        line_zone = sv.LineZone(start=start, end=end)
+
     label_annotator = sv.LabelAnnotator()
     box_annotator = sv.BoxAnnotator()
     smoother = sv.DetectionsSmoother()
@@ -130,14 +161,12 @@ def main(
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
     roi_points=None
-    out = cv2.VideoWriter(output_filename, fourcc, 60.0, (width, height))
-    video_fps=int(cap.get(cv2.CAP_PROP_FPS))
+    out = cv2.VideoWriter(output_filename, fourcc, 30.0, (width, height))
 
     if not out.isOpened():
         print("Error: Could not open video writer.")
         return
 
-        
     vid_info=f'Resolution:{width}x{height} FPS:{video_fps}'
     print(f'info:{vid_info}')
 
@@ -148,12 +177,12 @@ def main(
     fps=0
     prev_time = time.time()
     start_time=time.time()
-    last_send_time = start_time
+
     while True:
         success, frame = cap.read()
         if not success:
             break
-        
+
         if index % stride == 0:
             annotated_frame= process_frame(
                 frame, 
@@ -172,8 +201,7 @@ def main(
             fps = stride / (current_time - prev_time)
             avrg_fps+=fps
             prev_time = current_time
-            
-            
+
             cv2.putText(
                 annotated_frame,
                 f'FPS: {fps:.1f}', 
@@ -193,7 +221,7 @@ def main(
                 (125, 0, 255),
                 2
                 )
-
+            
             cv2.imshow('cv2', annotated_frame)
             
             out.write(annotated_frame)
@@ -213,14 +241,14 @@ def main(
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--weights", nargs="+", type=str, default='yolo11n.pt')
+    parser.add_argument("--weights", nargs="+", type=str, default='yolo11x.pt')
     parser.add_argument("--input", type=str, default='video.mp4')
     parser.add_argument("--output", type=str, default='result')
     parser.add_argument("--cam", action="store_true")
     parser.add_argument("--loc-name", type=str,default='Korea',help='location_name')
     parser.add_argument("--v-filtering", action='store_true')
     parser.add_argument("--conf-thres", type=float, default=0.25)
-    parser.add_argument("--iou", type=float,default=0.65)
+    parser.add_argument("--iou", type=float,default=0.55)
     parser.add_argument("--id", type=str,default='0')
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--track-thres", type=float, default=0.55,help='track_activation_threshold')
@@ -231,7 +259,7 @@ def parse_opt():
     parser.add_argument("--trace-len",type=int,default=5)
     parser.add_argument("--width", type=int, default=1920, help="Frame width")
     parser.add_argument("--height", type=int, default=1080, help="Frame height")
-    parser.add_argument("--video-fps", type=int, default=60, help="Webcam FPS setting")
+    parser.add_argument("--video-fps", type=int, default=30, help="Webcam FPS setting")
     parser.add_argument("--roi", action="store_true")
     
     opt = parser.parse_args()
