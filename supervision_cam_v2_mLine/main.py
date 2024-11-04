@@ -109,7 +109,7 @@ def main(
     ):
     model = YOLO('yolov8n.pt')
     model.export(format='engine')
-    tensorrt_model=YOLO('yolov8n.engine')
+    tensorrt_model=load_model('yolov8n.engine')
     
     tracker = sv.ByteTrack(
         track_activation_threshold=track_thres,

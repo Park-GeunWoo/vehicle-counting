@@ -35,16 +35,13 @@ from ultralytics import solutions
 classes=[1,2,3,5,7]
 def process_frame(
     frame,
-    index, 
     model, 
     tracker,
     smoother,
     conf_thres, 
     line_zones,
     box_annotator, 
-    label_annotator, 
-    trace_annotator,
-    line_annotator,
+    label_annotator,
     roi,
     roi_points
     ):
@@ -106,7 +103,9 @@ def main(
     roi=False
     ):
     model = load_model(weights)
-
+    model.export(format='engine')
+    tensorrt_model=load_model('yolov8n.engine')
+    
     tracker = sv.ByteTrack(
         track_activation_threshold=track_thres,
         lost_track_buffer=track_buf, #몇 프레임 동안 트래킹 할지
@@ -185,16 +184,15 @@ def main(
 
         if index % stride == 0:
             annotated_frame= process_frame(
-                frame, 
-                index,
-                model,
-                tracker,
-                smoother,
-                conf_thres,
-                box_annotator,
-                label_annotator,
-                roi,
-                roi_points
+                frame=frame, 
+                model=tensorrt_model,
+                tracker=tracker,
+                smoother=smoother,
+                conf_thres=conf_thres,
+                box_annotator=box_annotator,
+                label_annotator=label_annotator,
+                roi=roi,
+                roi_points=roi_points
                 )
 
             current_time = time.time()
