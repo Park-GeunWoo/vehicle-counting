@@ -6,3 +6,4 @@ vehicle_data.csv
 *.zip
 *.onnx
 *.engine
+*.cache
