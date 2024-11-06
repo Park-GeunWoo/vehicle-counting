@@ -39,11 +39,10 @@ class YOLOTracker:
         
         self.cam = args.cam    
         self.roi = args.roi
-        self.roi_points = None
         
-        #self.model = YOLO('yolov8n.pt')
-        #self.model.export(format="engine", batch=1, workspace=4, half=True)
-        self.tensorrt_model = YOLO('yolov8n.engine')
+        self.model = YOLO('yolov8n.pt')
+        self.model.export(format="engine", dynamic=True, batch=1, workspace=4, half=True)
+        self.model = YOLO('yolov8n.engine')
 
         self.tracker = sv.ByteTrack(
             track_activation_threshold=args.track_thres,
@@ -60,7 +59,7 @@ class YOLOTracker:
         self.trace_annotator = TraceAnnotator(trace_length=args.trace_len)
         self.line_annotator = LineZoneAnnotator()
         
-        self.input_path = 'input서측18.mp4'#args.input
+        self.input_path = '2.mp4'#args.input
         self.output_path = args.output
         
         self.width = args.width
@@ -69,47 +68,26 @@ class YOLOTracker:
         
         self.conf_thres = args.conf_thres
 
-        line_zone_points=[
-            (890,680,1760,480), #서측
-            (1110,865,1840,510),
-            (1667,990,1910,530)
-            # (640,760,1510,480), #남측
-            # (1010,980,1690,520), 
-            # (1730,980,1810,530)
-            # (860,760,1650,440), #동
-            # (1220,990,1750,440),
-            # (1740,990,1840,450)
-            # (810,770,1700,530), #북
-            # (1150,1050,1830,570),
-            # (1720,1050,1900,590)
-            ]
         self.line_zones = []
-        self.set_line_zones(line_zone_points or [])
+        self.roi_points = None
 
 
     def set_line_zones(self, line_zone_points):
-        self.line_zones = []
-        if self.roi and self.roi_points is not None:
-                x1, y1, x2, y2 = self.roi_points
-                for start_x, start_y, end_x, end_y in line_zone_points:
-                    adjusted_start_x = start_x - x1
-                    adjusted_start_y = start_y - y1
-                    adjusted_end_x = end_x - x1
-                    adjusted_end_y = end_y - y1
-                    
-                    line_zone = LineZone(
-                        start=(adjusted_start_x, adjusted_start_y),
-                        end=(adjusted_end_x, adjusted_end_y)
-                    )
-                    self.line_zones.append(line_zone)
-        else:
-            for start_x, start_y, end_x, end_y in line_zone_points:
-                line_zone = LineZone(
-                    start=(start_x, start_y),
-                    end=(end_x, end_y)
-                )
-                self.line_zones.append(line_zone)
-                
+        scaled_line_zones=scale_line_zones(line_zone_points,self.width,self.height)
+        print(f'asdf{self.line_zones}')
+        '''roi여부, roi 포인트가 있을때 라인존 스케일링 함수'''
+        for start_x, start_y, end_x, end_y in scaled_line_zones:
+            if self.roi and self.roi_points is not None:
+                start_x-=self.roi_points[0]
+                start_y-=self.roi_points[1]
+                end_x-=self.roi_points[2]
+                end_y-=self.roi_points[3]
+            line_zone=LineZone(
+                start=(start_x,start_y),
+                end=(end_x,end_y)
+            )
+            self.line_zones.append(line_zone)
+    
     def process_frame(self, frame):
         if self.roi:
             x_min, y_min, x_max, y_max = self.roi_points
@@ -117,7 +95,7 @@ class YOLOTracker:
         
         annotated_frame = frame.copy()
         
-        results = self.tensorrt_model(source=frame, conf=self.conf_thres)[0]
+        results = self.model(source=frame, conf=self.conf_thres)[0]
         
         detections = sv.Detections.from_ultralytics(results)
         detections = detections[np.isin(detections.class_id, [1, 2, 3, 5, 7])]
@@ -142,26 +120,65 @@ class YOLOTracker:
 
         return annotated_frame
 
+
     def run(self):
+        '''predict init'''
+        
         if self.cam:
-            cap=cv2.VideoCapture(0)
+            cap = cv2.VideoCapture(0)
         else:
             cap = cv2.VideoCapture(self.input_path)
             
         if not cap.isOpened():
-            print('Could not open video')
+            print('Could not open Cam or Video')
             return
-
+        
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         cap.set(cv2.CAP_PROP_FPS, self.video_fps)
+        
+        self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.video_fps=int(cap.get(cv2.CAP_PROP_FPS))
 
         output_filename = getNextFilename(base_name=self.output_path, extension='mp4')
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output_filename, fourcc, self.video_fps, (self.width, self.height))
+        
+        line_zone_points=[
+            (890,680,1760,480), #서측
+            (1110,865,1840,510),
+            (1667,990,1910,530)
+            # (640,760,1510,480), #남측
+            # (1010,980,1690,520), 
+            # (1730,980,1810,530)
+            # (860,760,1650,440), #동
+            # (1220,990,1750,440),
+            # (1740,990,1840,450)
+            # (810,770,1700,530), #북
+            # (1150,1050,1830,570),
+            # (1720,1050,1900,590)
+            ]
+        
+        #저장 해상도를 roi에 마춰 스케일링
+        if self.roi:
+            self.roi_points = scale_roi(self.roi_points, self.width, self.height)
+            x1,y1,x2,y2=self.roi_points
+            out = cv2.VideoWriter(output_filename, fourcc, self.video_fps, (x2-x1, y2-y1))
+        else:
+            self.roi_points=None
+            out = cv2.VideoWriter(output_filename, fourcc, self.video_fps, (self.width, self.height))
+        
+        if not out.isOpened():
+            print("Error: Could not open video writer.")
+            return
 
+        self.set_line_zones(line_zone_points)
+    
         index, avrg_fps, prev_time = 1, 0, time.time()
 
+        vid_info=f'Resolution:{self.width}x{self.height} FPS:{self.video_fps}'
+        print(f'info:{vid_info}')
+        
         while True:
             success, frame = cap.read()
             if not success:
@@ -191,7 +208,7 @@ class YOLOTracker:
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--weights", nargs="+", type=str, default='yolo11x.pt')
+    parser.add_argument("--weights", nargs="+", type=str, default='yolov8n.pt')
     parser.add_argument("--input", type=str, default='video.mp4')
     parser.add_argument("--output", type=str, default='result')
     parser.add_argument("--cam", action="store_true")
@@ -209,7 +226,7 @@ def parse_opt():
     parser.add_argument("--trace-len",type=int,default=5)
     parser.add_argument("--width", type=int, default=1920, help="Frame width")
     parser.add_argument("--height", type=int, default=1080, help="Frame height")
-    parser.add_argument("--video-fps", type=int, default=30, help="Webcam FPS setting")
+    parser.add_argument("--video-fps", type=int, default=30.0, help="Webcam FPS setting")
     parser.add_argument("--roi", action="store_true")
     
     opt = parser.parse_args()

@@ -105,9 +105,9 @@ def main(
     video_fps=30,
     roi=False
     ):
-    #model = YOLO('yolov8n.pt')
+    model = YOLO('yolov8n.pt')
     #model.export(format="engine", batch=8, workspace=4, int8=True, data="coco.yaml")
-    model=load_model('yolov8n.engine')
+    #model=load_model('yolov8n.engine')
     
     tracker = sv.ByteTrack(
         track_activation_threshold=track_thres,
@@ -149,7 +149,7 @@ def main(
     box_annotator = sv.BoxAnnotator()
     smoother = sv.DetectionsSmoother()
     
-    input_path ="input서측18.mp4"
+    input_path ="1.mp4"
     #print(cam)
     if cam:
         cap = cv2.VideoCapture(0)
