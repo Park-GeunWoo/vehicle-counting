@@ -15,7 +15,7 @@ def load_data():
         print("Error: Data store file not found.")
         return None
 
-def main():
+def send_data_to_server():
     data = load_data()
 
     if data:
@@ -39,4 +39,4 @@ def main():
         print("Failed to load data from JSON.")
 
 if __name__=='__main__':
-    main()
+    send_data_to_server()

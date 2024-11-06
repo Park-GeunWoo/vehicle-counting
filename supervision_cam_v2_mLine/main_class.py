@@ -18,7 +18,8 @@ import supervision as sv
 from pathlib import Path
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]
-            
+
+from server.client import send_data_to_server
 from utils.print_args import print_args
 from utils.file_utils import getNextFilename
 
@@ -26,9 +27,8 @@ from line_zone import LineZone,process_detections
 
 from utils.roi_scaler import scale_roi
 from utils.line_zones_scaler import scale_line_zones
-from data.data_store import in_count,out_count,update
 
-from models.model_loader import load_model
+from data.data_store import in_count,out_count,update
 
 from annotator.annotator import TraceAnnotator,LineZoneAnnotator
 from ultralytics import solutions
@@ -70,6 +70,8 @@ class YOLOTracker:
 
         self.line_zones = []
         self.roi_points = None
+        
+        self.interval=60
 
 
     def set_line_zones(self, line_zone_points):
@@ -87,38 +89,7 @@ class YOLOTracker:
                 end=(end_x,end_y)
             )
             self.line_zones.append(line_zone)
-    
-    def process_frame(self, frame):
-        if self.roi:
-            x_min, y_min, x_max, y_max = self.roi_points
-            frame = frame[y_min:y_max, x_min:x_max]
-        
-        annotated_frame = frame.copy()
-        
-        results = self.model(source=frame, conf=self.conf_thres)[0]
-        
-        detections = sv.Detections.from_ultralytics(results)
-        detections = detections[np.isin(detections.class_id, [1, 2, 3, 5, 7])]
-        detections = self.tracker.update_with_detections(detections)
-        detections = self.smoother.update_with_detections(detections)
-        
-        if detections.tracker_id is None:
-            return annotated_frame
 
-        labels = process_detections(
-            detections=detections,
-            tracker=self.tracker,
-            trace_annotator=self.trace_annotator,
-            line_zones=self.line_zones
-        )
-
-        annotated_frame = self.trace_annotator.annotate(annotated_frame)
-        annotated_frame = self.label_annotator.annotate(annotated_frame, detections, labels)
-        annotated_frame = self.box_annotator.annotate(annotated_frame, detections)
-        for line_zone in self.line_zones:
-            annotated_frame = self.line_annotator.annotate(annotated_frame, line_zone)
-
-        return annotated_frame
 
 
     def run(self):
@@ -173,23 +144,57 @@ class YOLOTracker:
             return
 
         self.set_line_zones(line_zone_points)
-    
-        index, avrg_fps, prev_time = 1, 0, time.time()
 
         vid_info=f'Resolution:{self.width}x{self.height} FPS:{self.video_fps}'
         print(f'info:{vid_info}')
+        
+        index, avrg_fps, prev_time = 1, 0, time.time()#fps 타이머
+        last_execution = time.time()#데이터 전송 타이머
         
         while True:
             success, frame = cap.read()
             if not success:
                 break
 
-            annotated_frame = self.process_frame(frame)
+            if self.roi:
+                x_min, y_min, x_max, y_max = self.roi_points
+                frame = frame[y_min:y_max, x_min:x_max]
+            
+            annotated_frame = frame.copy()
+            
+            results = self.model(source=frame, conf=self.conf_thres)[0]
+            
+            detections = sv.Detections.from_ultralytics(results)
+            detections = detections[np.isin(detections.class_id, [1, 2, 3, 5, 7])]
+            detections = self.tracker.update_with_detections(detections)
+            detections = self.smoother.update_with_detections(detections)
+            
+            if detections.tracker_id is None:
+                labels = process_detections(
+                    detections=detections,
+                    tracker=self.tracker,
+                    trace_annotator=self.trace_annotator,
+                    line_zones=self.line_zones
+                )
+
+                annotated_frame = self.trace_annotator.annotate(annotated_frame)
+                annotated_frame = self.label_annotator.annotate(annotated_frame, detections, labels)
+                annotated_frame = self.box_annotator.annotate(annotated_frame, detections)
+                
+                for line_zone in self.line_zones:
+                    annotated_frame = self.line_annotator.annotate(annotated_frame, line_zone)
+
+
             current_time = time.time()
             fps = 1 / (current_time - prev_time)
             avrg_fps += fps
             prev_time = current_time
 
+            #데이터 전송
+            if time.time() - last_execution >= self.interval:
+                send_data_to_server()
+                last_execution = time.time()
+                
             cv2.putText(annotated_frame, f'FPS: {fps:.1f}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
             cv2.putText(annotated_frame, f"Count: {in_count[0]}", (80, 150), cv2.FONT_HERSHEY_SIMPLEX, 2, (125, 0, 255), 2)
             
