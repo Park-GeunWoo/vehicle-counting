@@ -55,7 +55,7 @@ def process_frame(
     
     annotated_frame = frame.copy()
 
-    results = model(source=frame, conf=conf_thres)[0]
+    results = model.predict(source=frame, conf=conf_thres)[0]
     detections = sv.Detections.from_ultralytics(results)
     detections=detections[np.isin(detections.class_id,classes)]
     detections = tracker.update_with_detections(detections)
@@ -91,8 +91,7 @@ def main(
     video_fps=30,
     roi=False
     ):
-    model = YOLO('yolov8n.pt')
-    
+    model = YOLO("yolov8n.pt")
 
     tracker = sv.ByteTrack(
         track_activation_threshold=track_thres,
@@ -117,7 +116,7 @@ def main(
     if not cap.isOpened():
         print('Could not open Cam or Video')
         return
-    
+    print(f'asdfasdf{video_fps}')
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
     cap.set(cv2.CAP_PROP_FPS, video_fps)
@@ -213,7 +212,7 @@ def main(
 
 def parse_opt():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--weights", nargs="+", type=str, default='yolo11n.pt')
+    parser.add_argument("--weights", nargs="+", type=str, default='yolov8n.pt')
     parser.add_argument("--input", type=str, default='video.mp4')
     parser.add_argument("--output", type=str, default='result')
     parser.add_argument("--cam", action="store_true")

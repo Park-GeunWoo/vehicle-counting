@@ -73,8 +73,6 @@ def process_frame(
         line_zones=line_zones
         )
 
-
-    
     annotated_frame = trace_annotator.annotate(annotated_frame)
     annotated_frame = label_annotator.annotate(annotated_frame, detections, labels)
     annotated_frame = box_annotator.annotate(annotated_frame,detections)
@@ -107,9 +105,9 @@ def main(
     video_fps=30,
     roi=False
     ):
-    model = YOLO('yolov8n.pt')
-    model.export(format='engine')
-    tensorrt_model=load_model('yolov8n.engine')
+    #model = YOLO('yolov8n.pt')
+    #model.export(format="engine", batch=8, workspace=4, int8=True, data="coco.yaml")
+    model=load_model('yolov8n.engine')
     
     tracker = sv.ByteTrack(
         track_activation_threshold=track_thres,
@@ -234,15 +232,15 @@ def main(
             annotated_frame= process_frame(
                 frame=frame,
                 index=index,
-                model=tensorrt_model,
+                model=model,
                 tracker=tracker,
                 smoother=smoother,
                 conf_thres=conf_thres,
-                line_zones=line_zone,
+                line_zones=line_zones,
                 box_annotator=box_annotator,
                 label_annotator=label_annotator,
                 trace_annotator=trace_annotator,
-                line_annotator=line_zone,
+                line_annotator=line_annotator,
                 roi=roi,
                 roi_points=roi_points
                 )

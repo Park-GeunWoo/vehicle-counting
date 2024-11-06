@@ -4,3 +4,5 @@ data_store.json
 vehicle_data.csv
 *.pt
 *.zip
+*.onnx
+*.engine
