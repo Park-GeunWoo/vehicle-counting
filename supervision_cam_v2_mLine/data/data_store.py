@@ -2,6 +2,8 @@
 in_count = [0]
 out_count = [0]
 
+total_count=[0]
+
 import json
 JSON_FILE_PATH = 'data_store.json'
 
@@ -21,11 +23,12 @@ def save_data():
         }, json_file, indent=4)
     
     
-def update(edge_id, location_name, gps, time, count):
-    global data_store,in_count,out_count
+def update(time):
+    global data_store
+    data_store["time"] = time
+    save_data()
+
+def data_store_init(edge_id,location_name,gps):
     data_store["edge_id"] = edge_id
     data_store["location_name"] = location_name
     data_store["gps"] = gps
-    data_store["time"] = time
-    save_data()
-    
