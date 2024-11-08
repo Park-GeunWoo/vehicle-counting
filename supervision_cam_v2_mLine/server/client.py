@@ -9,7 +9,7 @@ import time
 from datetime import datetime
 import subprocess
 
-from data.data_store import update, in_count
+from data.data_store import update, count
 
 app = Flask(__name__)
 

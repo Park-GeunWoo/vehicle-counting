@@ -44,7 +44,7 @@ class YOLOTracker:
             gps=None
             )
         
-        self.input_path = 'input서측18.mp4' #input 영상 이름
+        self.input_path = '1.mp4' #input 영상 이름
         self.output_path = args.output
         
         self.width = args.width
@@ -174,7 +174,7 @@ class YOLOTracker:
             
             annotated_frame = frame.copy()
             
-            results = self.model(source=frame, conf=self.conf_thres)[0]
+            results = self.model(source=frame, conf=self.conf_thres)[0] #verbose=False 
             
             detections = sv.Detections.from_ultralytics(results)
             detections = detections[np.isin(detections.class_id, [1, 2, 3, 5, 7])]
@@ -182,21 +182,6 @@ class YOLOTracker:
             
             if detections.tracker_id is None:
                 continue
-            
-            labels = process_detections(
-                detections=detections,
-                tracker=self.tracker,
-                trace_annotator=self.trace_annotator,
-                line_zones=self.line_zones
-            )
-
-            annotated_frame = self.trace_annotator.annotate(annotated_frame)
-            annotated_frame = self.label_annotator.annotate(annotated_frame, detections, labels)
-            annotated_frame = self.box_annotator.annotate(annotated_frame, detections)
-            
-            for line_zone in self.line_zones:
-                annotated_frame = self.line_annotator.annotate(annotated_frame, line_zone)
-
 
             current_time = time.time()
             fps = 1 / (current_time - prev_time)
@@ -206,7 +191,7 @@ class YOLOTracker:
             cv2.putText(annotated_frame, f'FPS: {fps:.1f}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
             cv2.putText(annotated_frame, f"Count: {count[0]}", (80, 150), cv2.FONT_HERSHEY_SIMPLEX, 2, (125, 0, 255), 2)
             
-            cv2.imshow('cv2', annotated_frame)
+            #cv2.imshow('cv2', annotated_frame)
             self.out.write(annotated_frame)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -235,7 +220,7 @@ def parse_opt():
     parser.add_argument("--track-thres", type=float, default=0.55,help='track_activation_threshold')
     parser.add_argument("--track-buf",type=int,default=60)
     parser.add_argument("--mm-thres",type=float,default=0.8,help='minimum_matching_threshold')
-    parser.add_argument("--f-rate",type=int,default=20,help='frame rate')
+    parser.add_argument("--f-rate",type=int,default=10,help='frame rate')
     parser.add_argument("--min-frames",type=int,default=2,help='minimum_consecutive_frames')
     parser.add_argument("--trace-len",type=int,default=5)
     parser.add_argument("--width", type=int, default=1920, help="Frame width")

@@ -161,8 +161,6 @@ class YOLOTracker:
             return
         
         index, avrg_fps, prev_time = 1, 0, time.time()#fps 타이머
-        last_execution = time.time()#데이터 전송 타이머
-        
         while True:
             success, frame = self.cap.read()
             if not success:
@@ -171,48 +169,61 @@ class YOLOTracker:
             if self.roi:
                 x_min, y_min, x_max, y_max = self.roi_points
                 frame = frame[y_min:y_max, x_min:x_max]
-            
+
             annotated_frame = frame.copy()
-            
+
+            # 모델 추론 시간 측정
+            start_time = time.perf_counter()
             results = self.model(source=frame, conf=self.conf_thres)[0]
-            
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()  # GPU 연산 동기화
+            infer_time = time.perf_counter() - start_time
+
+            # 감지 및 추적 처리 시간 측정
+            start_time = time.perf_counter()
             detections = sv.Detections.from_ultralytics(results)
             detections = detections[np.isin(detections.class_id, [1, 2, 3, 5, 7])]
             detections = self.tracker.update_with_detections(detections)
-            
+            process_time = time.perf_counter() - start_time
+
             if detections.tracker_id is None:
                 continue
-            
+
+            # 시각화 시간 측정
+            start_time = time.perf_counter()
             labels = process_detections(
                 detections=detections,
                 tracker=self.tracker,
                 trace_annotator=self.trace_annotator,
                 line_zones=self.line_zones
             )
-
             annotated_frame = self.trace_annotator.annotate(annotated_frame)
             annotated_frame = self.label_annotator.annotate(annotated_frame, detections, labels)
             annotated_frame = self.box_annotator.annotate(annotated_frame, detections)
-            
+
             for line_zone in self.line_zones:
                 annotated_frame = self.line_annotator.annotate(annotated_frame, line_zone)
+            visualization_time = time.perf_counter() - start_time
 
-
-            current_time = time.time()
+            # FPS 계산
+            current_time = time.perf_counter()
             fps = 1 / (current_time - prev_time)
             avrg_fps += fps
             prev_time = current_time
-                
+
             cv2.putText(annotated_frame, f'FPS: {fps:.1f}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
             cv2.putText(annotated_frame, f"Count: {count[0]}", (80, 150), cv2.FONT_HERSHEY_SIMPLEX, 2, (125, 0, 255), 2)
-            
+
             cv2.imshow('cv2', annotated_frame)
             self.out.write(annotated_frame)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
-            
+
             index += 1
+
+            # 실행 시간 출력
+            print(f"Inference Time: {infer_time:.4f}s, Process Time: {process_time:.4f}s, Visualization Time: {visualization_time:.4f}s")
 
         print(f'Total Frames: {index} Average FPS: {int(avrg_fps/index)}')
         

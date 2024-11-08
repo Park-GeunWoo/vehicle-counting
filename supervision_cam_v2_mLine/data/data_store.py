@@ -1,4 +1,5 @@
 # data/data_store.py
+count=[0]
 in_count = [0]
 out_count = [0]
 
@@ -19,7 +20,7 @@ def save_data():
     with open(JSON_FILE_PATH, 'w') as json_file:
         json.dump({
             "data_store": data_store,
-            "count": in_count[0]
+            "count": count[0]
         }, json_file, indent=4)
     
     

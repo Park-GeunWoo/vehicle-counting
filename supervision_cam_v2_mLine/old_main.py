@@ -207,7 +207,6 @@ def main(
     fps=0
     prev_time = time.time()
     start_time=time.time()
-    last_send_time = start_time
 
     # formatted_time = datetime.now().strftime("%Y%m%d_%H%M%S")
     #         # 데이터 전송
