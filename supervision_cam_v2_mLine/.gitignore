@@ -1,6 +1,6 @@
 *.mp4
-data_store.json
-vehicle_data.csv
+*.json
+*.csv
 *.pt
 *.zip
 *.onnx
